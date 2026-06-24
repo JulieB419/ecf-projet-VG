@@ -35,10 +35,10 @@ final class AdminController extends Controller
         $page = SitePage::get($type);
         if (!$page) {
             if ($type === 'mentions_legales') {
-                $default = @file_get_contents(__DIR__ . '/../Views/legal/legal_default.html') ?: '';
+                $default = @file_get_contents(__DIR__ . '/../../views/legal/legal_default.html') ?: '';
                 SitePage::upsert('mentions_legales', 'Mentions légales', $default);
             } else {
-                $default = @file_get_contents(__DIR__ . '/../Views/legal/cgv_default.html') ?: '';
+                $default = @file_get_contents(__DIR__ . '/../../views/legal/cgv_default.html') ?: '';
                 SitePage::upsert('cgv', 'Conditions générales de vente', $default);
             }
             $page = SitePage::get($type);
@@ -71,7 +71,8 @@ final class AdminController extends Controller
         }
 
         SitePage::upsert($type, $title, $content);
-        $this->redirect('/administration/pages?type=' . urlencode($type) . '&saved=1');
+        header('Location: /administration/pages?type=' . urlencode($type) . '&saved=1');
+        exit;
     }
 
     
@@ -107,7 +108,8 @@ final class AdminController extends Controller
         SiteSetting::set('caterer_phone', $phone);
         SiteSetting::set('caterer_email', $email);
 
-        $this->redirect('/administration/informations?saved=1');
+        header('Location: /administration/informations?saved=1');
+        exit;
     }
 
     // ====== Traiteur: horaires d'ouverture (footer) ======
@@ -150,7 +152,8 @@ final class AdminController extends Controller
         }
 
         OpeningHours::updateMany($rows);
-        $this->redirect('/administration/informations?saved=1');
+        header('Location: /administration/informations?saved=1');
+        exit;
     }
 
 public function employees(): void

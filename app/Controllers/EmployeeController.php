@@ -69,7 +69,6 @@ final class EmployeeController extends Controller
 
         $orderId = (int)$params['id'];
         Order::cancelByEmployee($orderId, (int)$u['id'], $mode, $cdate, $reason);
-        StatsStore::markCancelled($orderId);
 
         $order = Order::findAny($orderId);
         if ($order) Mailer::send($order['email'],'Commande annulée',"Motif : {$reason}");

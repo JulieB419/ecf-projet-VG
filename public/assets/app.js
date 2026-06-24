@@ -1,384 +1,417 @@
+// Fichier JS global de l'application.
+// Chaque module s'active uniquement si les éléments de sa page existent.
 (function () {
-  const form = document.querySelector('[data-menu-filters]');
-  const list = document.querySelector('[data-menu-list]');
-  if (!form || !list) return;
+  'use strict';
 
-  const baseHref = document.body?.dataset?.base || '/';
-
-  function withBase(path) {
-    // path: "api/menus" ou "menus/1"
-    const cleanBase = baseHref.endsWith('/') ? baseHref : baseHref + '/';
-    return cleanBase + String(path).replace(/^\//, '');
+  function escapeHtml(str) {
+    return String(str ?? '')
+      .replaceAll('&', '&amp;')
+      .replaceAll('<', '&lt;')
+      .replaceAll('>', '&gt;')
+      .replaceAll('"', '&quot;')
+      .replaceAll("'", '&#039;');
   }
 
-  async function refresh() {
-    const params = new URLSearchParams(new FormData(form));
-    const url = withBase('api/menus') + '?' + params.toString();
+  function money(value) {
+    return (Math.round(Number(value || 0) * 100) / 100).toFixed(2).replace('.', ',') + ' €';
+  }
 
-    let res;
-    try {
-      res = await fetch(url, { headers: { 'Accept': 'application/json' } });
-    } catch (e) {
-      list.innerHTML = '<div class="alert alert-danger">Erreur lors du chargement des menus.</div>';
-      return;
-    }
+  // Page publique : Nos menus
+  function initMenuFilters() {
+    const form = document.getElementById('menuFilters');
+    const list = document.getElementById('menuList');
+    const info = document.getElementById('menuInfo');
+    if (!form || !list || !info) return;
 
-    if (!res.ok) {
-      list.innerHTML = '<div class="alert alert-danger">Erreur lors du chargement des menus.</div>';
-      return;
-    }
+    const apiUrl = form.dataset.apiUrl;
+    const menusUrl = form.dataset.menusUrl;
+    if (!apiUrl || !menusUrl) return;
 
-    const data = await res.json();
-    list.innerHTML = '';
+    function renderItems(items) {
+      list.innerHTML = '';
 
-    if (!data.items || !data.items.length) {
-      list.innerHTML = '<div class="alert alert-secondary">Aucun menu ne correspond aux filtres.</div>';
-      return;
-    }
+      if (!items || items.length === 0) {
+        info.innerHTML = '<div class="alert alert-warning mb-0">Aucun menu ne correspond aux filtres.</div>';
+        return;
+      }
 
-    data.items.forEach(m => {
-      const card = document.createElement('div');
-      card.className = 'col-md-6 col-lg-4 mb-3';
-      card.innerHTML = `
-        <div class="card h-100 shadow-sm">
-          <div class="card-body">
-            <h3 class="h5 card-title">${escapeHtml(m.title)}</h3>
-            <p class="card-text text-muted">${escapeHtml(m.short_description)}</p>
-            <div class="small">
-              <span class="badge text-bg-light">Min. ${m.min_people} pers.</span>
-              <span class="badge text-bg-light">${Number(m.base_price).toFixed(2)} €</span>
-              <span class="badge text-bg-light">${escapeHtml(m.theme)}</span>
-              <span class="badge text-bg-light">${escapeHtml(m.diet)}</span>
+      info.innerHTML = '<div class="alert alert-light border mb-0">Menus trouvés : <strong>' + items.length + '</strong></div>';
+
+      for (const menu of items) {
+        const detailUrl = menusUrl.replace(/\/$/, '') + '/' + encodeURIComponent(menu.id);
+        list.insertAdjacentHTML('beforeend', `
+          <div class="col-md-4 mb-3">
+            <div class="card h-100">
+              <div class="card-body">
+                <h2 class="h5 card-title mb-2">${escapeHtml(menu.title)}</h2>
+                <p class="card-text text-muted mb-2">${escapeHtml(menu.short_description ?? '')}</p>
+                <ul class="list-unstyled small mb-3">
+                  <li><strong>Thème :</strong> ${escapeHtml(menu.theme ?? '')}</li>
+                  <li><strong>Régime :</strong> ${escapeHtml(menu.diet ?? '')}</li>
+                  <li><strong>Min. personnes :</strong> ${escapeHtml(menu.min_people ?? '')}</li>
+                  <li><strong>À partir de :</strong> ${escapeHtml(menu.base_price ?? '')} €</li>
+                </ul>
+                <a class="btn btn-outline-primary" href="${detailUrl}">En savoir plus</a>
+              </div>
             </div>
           </div>
-          <div class="card-footer bg-white border-0">
-            <a class="btn btn-sm btn-primary" href="${withBase('menus/' + m.id)}">En savoir plus</a>
-          </div>
-        </div>`;
-      list.appendChild(card);
+        `);
+      }
+    }
+
+    async function load(params) {
+      const query = params.toString();
+      const url = query ? (apiUrl + '?' + query) : apiUrl;
+
+      try {
+        const res = await fetch(url, { headers: { 'Accept': 'application/json' }});
+        if (!res.ok) throw new Error('HTTP ' + res.status);
+        const data = await res.json();
+        renderItems(data.items || []);
+      } catch (error) {
+        console.error(error);
+        info.innerHTML = '<div class="alert alert-danger mb-0">Erreur lors du chargement des menus.</div>';
+        list.innerHTML = '';
+      }
+    }
+
+    form.addEventListener('submit', function (event) {
+      event.preventDefault();
+      const params = new URLSearchParams();
+      for (const [key, value] of new FormData(form).entries()) {
+        const cleanValue = String(value).trim();
+        if (cleanValue !== '') params.set(key, cleanValue);
+      }
+      load(params);
+    });
+
+    load(new URLSearchParams());
+  }
+
+  // Prévisualisation des régimes/allergènes dans l'administration des plats
+  function initDishPreviewBadges() {
+    const regimes = document.getElementById('regimes');
+    const allergens = document.getElementById('allergens');
+    const regimesPreview = document.getElementById('regimesPreview');
+    const allergensPreview = document.getElementById('allergensPreview');
+    if (!regimes && !allergens) return;
+
+    function asBadges(selectEl) {
+      const selected = Array.from(selectEl.selectedOptions)
+        .map(option => option.textContent.trim())
+        .filter(Boolean);
+
+      if (!selected.length) return '<span class="selection-preview-empty">(aucun)</span>';
+
+      return selected
+        .map(label => '<span class="selection-preview-badge">' + escapeHtml(label) + '</span>')
+        .join('');
+    }
+
+    function render() {
+      if (regimes && regimesPreview) regimesPreview.innerHTML = asBadges(regimes);
+      if (allergens && allergensPreview) allergensPreview.innerHTML = asBadges(allergens);
+    }
+
+    if (regimes) regimes.addEventListener('change', render);
+    if (allergens) allergens.addEventListener('change', render);
+    render();
+  }
+
+  // Page administration : horaires d'ouverture
+  function initOpeningHoursForm() {
+    document.querySelectorAll('[data-opening-hours-row]').forEach(row => {
+      const checkbox = row.querySelector('input[type="checkbox"]');
+      const timeInputs = row.querySelectorAll('input[type="time"]');
+      if (!checkbox || !timeInputs.length) return;
+
+      function toggle() {
+        timeInputs.forEach(input => { input.disabled = checkbox.checked; });
+      }
+
+      checkbox.addEventListener('change', toggle);
+      toggle();
     });
   }
 
-  function escapeHtml(s) {
-    return String(s).replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
-  }
+  // Page Commander
+  function initOrderForm() {
+    const form = document.getElementById('orderForm');
+    if (!form) return;
 
-  form.addEventListener('change', refresh);
-  form.addEventListener('submit', e => { e.preventDefault(); refresh(); });
-  refresh();
-})();
+    const apiBase = form.dataset.apiMenuBase;
+    const commanderBase = form.dataset.commanderBase;
+    const menuSelect = document.getElementById('menu_id');
+    const dietFilter = document.getElementById('diet_filter');
+    const entreeSelect = document.getElementById('entree_id');
+    const platSelect = document.getElementById('plat_id');
+    const dessertSelect = document.getElementById('dessert_id');
+    const entreePreview = document.getElementById('entree_preview');
+    const platPreview = document.getElementById('plat_preview');
+    const dessertPreview = document.getElementById('dessert_preview');
+    const peopleInput = document.getElementById('people_count');
+    const minPeopleTxt = document.getElementById('min_people_txt');
+    const discountThresholdTxt = document.getElementById('discount_threshold_txt');
+    const cityInput = document.getElementById('prestation_city');
+    const distanceHidden = document.getElementById('distance_km');
+    const priceMenu = document.getElementById('price_menu');
+    const priceDelivery = document.getElementById('price_delivery');
+    const priceDiscount = document.getElementById('price_discount');
+    const priceTotal = document.getElementById('price_total');
+    const discountRow = document.getElementById('discount_row');
+    const confirmFlag = document.getElementById('confirmFlag');
 
-// ==============================
-// Page "Commander" (orders/create)
-// ==============================
-(function () {
-  const root = document.querySelector('[data-order-page]');
-  if (!root) return;
+    if (!apiBase || !commanderBase || !menuSelect || !peopleInput) return;
 
-  const baseHref = document.body?.dataset?.base || '/';
-  const cleanBase = baseHref.endsWith('/') ? baseHref : baseHref + '/';
-  const withBase = (path) => cleanBase + String(path).replace(/^\//, '');
+    let currentMenu = {
+      id: menuSelect.value,
+      min_people: Number(peopleInput.min || peopleInput.value || 0),
+      base_price: 0,
+      dishesOriginal: { entree: [], plat: [], dessert: [] },
+      dishes: { entree: [], plat: [], dessert: [] },
+      optionDiets: []
+    };
 
-  const menuSelect = root.querySelector('[data-menu-select]');
-  const dishesJsonEl = root.querySelector('[data-menu-dishes-json]');
-  const entreeSel = root.querySelector('[data-dish-select="entree"]');
-  const platSel = root.querySelector('[data-dish-select="plat"]');
-  const dessertSel = root.querySelector('[data-dish-select="dessert"]');
-  const peopleInput = root.querySelector('[data-people-count]');
-  const minPeopleEl = root.querySelector('[data-min-people]');
-  const basePriceEl = root.querySelector('[data-base-price]');
-  const kmEl = root.querySelector('[data-distance-km]');
-  const feeEl = root.querySelector('[data-delivery-fee]');
-  const totalEl = root.querySelector('[data-total]');
-  const discountEl = root.querySelector('[data-discount]');
-  const warnMinEl = root.querySelector('[data-min-warning]');
+    const bordeaux = [44.8378, -0.5792];
+    const geoCache = Object.create(null);
+    let lastGeoQuery = '';
+    let lastKm = 0;
+    let cityTimer = null;
 
-  const prevEntree = root.querySelector('[data-preview="entree"]');
-  const prevPlat = root.querySelector('[data-preview="plat"]');
-  const prevDessert = root.querySelector('[data-preview="dessert"]');
+    const cityHelp = cityInput?.parentElement?.querySelector('.form-text');
+    const distanceLine = document.createElement('div');
+    distanceLine.className = 'small text-muted mt-1';
+    distanceLine.id = 'distance_line';
+    if (cityHelp) cityHelp.insertAdjacentElement('afterend', distanceLine);
 
-  const hiddenMenuId = root.querySelector('input[name="menu_id"]');
-  const hiddenEntree = root.querySelector('input[name="entree_dish_id"]');
-  const hiddenPlat = root.querySelector('input[name="plat_dish_id"]');
-  const hiddenDessert = root.querySelector('input[name="dessert_dish_id"]');
-
-  function escapeHtml(s) {
-    return String(s).replace(/[&<>"]|'/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
-  }
-
-  function parseMenuData() {
-    try {
-      return JSON.parse(dishesJsonEl.textContent || '{}');
-    } catch (e) {
-      return {};
+    function haversineKm(lat1, lon1, lat2, lon2) {
+      const earthRadius = 6371;
+      const toRad = value => value * Math.PI / 180;
+      const dLat = toRad(lat2 - lat1);
+      const dLon = toRad(lon2 - lon1);
+      const a = Math.sin(dLat / 2) ** 2 +
+        Math.cos(toRad(lat1)) * Math.cos(toRad(lat2)) * Math.sin(dLon / 2) ** 2;
+      return 2 * earthRadius * Math.asin(Math.sqrt(a));
     }
-  }
 
-  let menuData = parseMenuData();
+    async function geocodeCityFr(city) {
+      const query = (city || '').trim();
+      const key = query.toLowerCase();
+      if (!query || key.length < 2) return null;
+      if (key === 'bordeaux') return bordeaux;
+      if (geoCache[key]) return geoCache[key];
 
-  function setSelectOptions(select, options) {
-    const current = select.value;
-    select.innerHTML = '<option value="">— Choisir —</option>';
-    options.forEach(d => {
-      const opt = document.createElement('option');
-      opt.value = String(d.id);
-      opt.textContent = d.name;
-      opt.dataset.description = d.description || '';
-      opt.dataset.category = d.category || '';
-      select.appendChild(opt);
+      lastGeoQuery = key;
+      const url = 'https://nominatim.openstreetmap.org/search?format=json&limit=1&countrycodes=fr&q=' + encodeURIComponent(query);
+      const res = await fetch(url, { headers: { 'Accept': 'application/json' }});
+      if (!res.ok) return null;
+
+      const json = await res.json();
+      if (lastGeoQuery !== key) return null;
+      if (!Array.isArray(json) || !json[0] || !json[0].lat || !json[0].lon) return null;
+
+      const lat = Number(json[0].lat);
+      const lon = Number(json[0].lon);
+      if (!Number.isFinite(lat) || !Number.isFinite(lon)) return null;
+
+      geoCache[key] = [lat, lon];
+      return geoCache[key];
+    }
+
+    async function estimateKmFromCity(city) {
+      const key = (city || '').trim().toLowerCase();
+      if (!key || key === 'bordeaux') return 0;
+      const destination = await geocodeCityFr(city);
+      if (!destination) return 0;
+      return Math.max(0, Math.round(haversineKm(bordeaux[0], bordeaux[1], destination[0], destination[1])));
+    }
+
+    function setOptions(select, items, placeholder) {
+      if (!select) return;
+      select.innerHTML = '';
+      const placeholderOption = document.createElement('option');
+      placeholderOption.value = '';
+      placeholderOption.textContent = placeholder;
+      select.appendChild(placeholderOption);
+
+      (items || []).forEach(item => {
+        const option = document.createElement('option');
+        option.value = String(item.id);
+        option.textContent = item.name;
+        select.appendChild(option);
+      });
+    }
+
+    function applyDietFilter() {
+      if (!dietFilter || !currentMenu) return;
+      const selected = dietFilter.value;
+      const filterList = list => {
+        if (!selected) return list || [];
+        return (list || []).filter(dish => {
+          const ids = dish.diet_ids || [];
+          if (!ids || ids.length === 0) return true;
+          return ids.map(String).includes(String(selected));
+        });
+      };
+
+      currentMenu.dishes = {
+        entree: filterList(currentMenu.dishesOriginal.entree),
+        plat: filterList(currentMenu.dishesOriginal.plat),
+        dessert: filterList(currentMenu.dishesOriginal.dessert)
+      };
+
+      const previous = {
+        entree: entreeSelect?.value,
+        plat: platSelect?.value,
+        dessert: dessertSelect?.value
+      };
+
+      setOptions(entreeSelect, currentMenu.dishes.entree, 'Choisir une entrée');
+      setOptions(platSelect, currentMenu.dishes.plat, 'Choisir un plat');
+      setOptions(dessertSelect, currentMenu.dishes.dessert, 'Choisir un dessert');
+
+      if (previous.entree && currentMenu.dishes.entree.some(d => String(d.id) === String(previous.entree))) entreeSelect.value = previous.entree;
+      if (previous.plat && currentMenu.dishes.plat.some(d => String(d.id) === String(previous.plat))) platSelect.value = previous.plat;
+      if (previous.dessert && currentMenu.dishes.dessert.some(d => String(d.id) === String(previous.dessert))) dessertSelect.value = previous.dessert;
+
+      updateAllPreviews();
+    }
+
+    function findDishById(category, id) {
+      const list = currentMenu.dishes?.[category] || [];
+      return list.find(dish => String(dish.id) === String(id)) || null;
+    }
+
+    function updatePreview(category, selectEl, previewEl) {
+      if (!selectEl || !previewEl) return;
+      const dish = findDishById(category, selectEl.value);
+      if (!dish) {
+        previewEl.textContent = '';
+        return;
+      }
+      previewEl.innerHTML = '<strong>' + escapeHtml(dish.name) + '</strong><br><span>' + escapeHtml(dish.description || '') + '</span>';
+    }
+
+    function updateAllPreviews() {
+      updatePreview('entree', entreeSelect, entreePreview);
+      updatePreview('plat', platSelect, platPreview);
+      updatePreview('dessert', dessertSelect, dessertPreview);
+    }
+
+    async function refreshPricing() {
+      const min = Number(currentMenu.min_people || 0);
+      const base = Number(currentMenu.base_price || 0);
+
+      peopleInput.min = String(min);
+      if (Number(peopleInput.value || 0) < min) peopleInput.value = String(min);
+
+      if (minPeopleTxt) minPeopleTxt.textContent = String(min);
+      if (discountThresholdTxt) discountThresholdTxt.textContent = String(min + 5);
+
+      const people = Number(peopleInput.value || 0);
+      const unit = min > 0 ? base / min : base;
+      const menuPrice = unit * people;
+      const discountRate = people >= (min + 5) ? 0.10 : 0;
+      const discountAmount = menuPrice * discountRate;
+      const menuAfterDiscount = menuPrice - discountAmount;
+
+      let km = 0;
+      try {
+        km = await estimateKmFromCity(cityInput?.value || '');
+      } catch (error) {
+        km = lastKm || 0;
+      }
+      lastKm = km;
+      if (distanceHidden) distanceHidden.value = String(km);
+
+      const cityKey = (cityInput?.value || '').trim();
+      if (distanceLine) {
+        if (!cityKey) distanceLine.textContent = '';
+        else if (cityKey.toLowerCase() === 'bordeaux') distanceLine.textContent = 'Distance estimée : 0 km (Bordeaux)';
+        else if (km > 0) distanceLine.textContent = 'Distance estimée : ' + km + ' km (depuis Bordeaux)';
+        else distanceLine.textContent = 'Distance estimée : — (ville non reconnue)';
+      }
+
+      let delivery = 0;
+      if (cityKey && cityKey.toLowerCase() !== 'bordeaux' && km > 0) {
+        delivery = 5 + 0.59 * km;
+      }
+
+      if (priceMenu) priceMenu.textContent = money(menuAfterDiscount);
+      if (priceDelivery) priceDelivery.textContent = money(delivery);
+      if (priceTotal) priceTotal.textContent = money(menuAfterDiscount + delivery);
+
+      if (discountRow && priceDiscount) {
+        if (discountRate > 0) {
+          discountRow.classList.remove('d-none');
+          priceDiscount.textContent = '- ' + money(discountAmount);
+        } else {
+          discountRow.classList.add('d-none');
+          priceDiscount.textContent = '';
+        }
+      }
+    }
+
+    async function loadMenu(menuId) {
+      const url = apiBase.replace(/\/$/, '') + '/' + encodeURIComponent(menuId);
+      const res = await fetch(url, { headers: { 'Accept': 'application/json' }});
+      if (!res.ok) throw new Error('HTTP ' + res.status);
+      const data = await res.json();
+
+      currentMenu = {
+        id: data.id,
+        min_people: data.min_people,
+        base_price: data.base_price,
+        dishesOriginal: data.dishes || { entree: [], plat: [], dessert: [] },
+        dishes: data.dishes || { entree: [], plat: [], dessert: [] },
+        optionDiets: data.option_diets || []
+      };
+
+      form.action = commanderBase.replace(/\/$/, '') + '/' + String(data.id);
+
+      if (dietFilter) {
+        dietFilter.innerHTML = '<option value="">Tous les régimes</option>';
+        currentMenu.optionDiets.forEach(diet => {
+          const option = document.createElement('option');
+          option.value = String(diet.id);
+          option.textContent = diet.name;
+          dietFilter.appendChild(option);
+        });
+        dietFilter.value = '';
+      }
+
+      applyDietFilter();
+      await refreshPricing();
+    }
+
+    if (dietFilter) {
+      dietFilter.addEventListener('change', applyDietFilter);
+    }
+
+    menuSelect.addEventListener('change', () => {
+      loadMenu(menuSelect.value).catch(() => alert('Erreur lors du chargement du menu sélectionné.'));
     });
-    // tente de garder la sélection si possible
-    if (current) select.value = current;
-    if (!select.value && options.length) select.value = String(options[0].id);
+
+    entreeSelect?.addEventListener('change', () => updatePreview('entree', entreeSelect, entreePreview));
+    platSelect?.addEventListener('change', () => updatePreview('plat', platSelect, platPreview));
+    dessertSelect?.addEventListener('change', () => updatePreview('dessert', dessertSelect, dessertPreview));
+    peopleInput.addEventListener('input', () => { refreshPricing(); });
+    cityInput?.addEventListener('input', () => {
+      if (cityTimer) clearTimeout(cityTimer);
+      cityTimer = setTimeout(() => { refreshPricing(); }, 450);
+    });
+
+    form.addEventListener('submit', () => {
+      if (confirmFlag) confirmFlag.value = '0';
+    });
+
+    loadMenu(menuSelect.value).catch(() => { refreshPricing(); });
   }
 
-  function updatePreviews() {
-    const byId = new Map((menuData.dishes || []).map(d => [String(d.id), d]));
-    const fill = (card, dishId) => {
-      const d = byId.get(String(dishId));
-      if (!d) {
-        card.innerHTML = '<div class="text-muted">Aucune sélection</div>';
-        return;
-      }
-      card.innerHTML = `
-        <div class="fw-semibold">${escapeHtml(d.name)}</div>
-        <div class="small text-muted">${escapeHtml(d.description || '')}</div>
-      `;
-    };
-    fill(prevEntree, entreeSel.value);
-    fill(prevPlat, platSel.value);
-    fill(prevDessert, dessertSel.value);
-
-    hiddenEntree.value = entreeSel.value || '';
-    hiddenPlat.value = platSel.value || '';
-    hiddenDessert.value = dessertSel.value || '';
-  }
-
-  function computeDeliveryFee(city, km) {
-    const c = (city || '').trim().toLowerCase();
-    if (!c) return 0;
-    if (c === 'bordeaux') return 0;
-    const d = isFinite(km) ? km : 0;
-    return 5 + 0.59 * Math.max(0, d);
-  }
-
-  function updatePricing() {
-    const minPeople = Number(menuData.min_people || 0);
-    const basePrice = Number(menuData.base_price || 0);
-    const people = Math.max(0, Number(peopleInput.value || 0));
-
-    minPeopleEl.textContent = String(minPeople);
-    basePriceEl.textContent = basePrice.toFixed(2);
-
-    const pricePerPerson = minPeople > 0 ? (basePrice / minPeople) : 0;
-    let menuPrice = pricePerPerson * people;
-    let discount = 0;
-    if (people >= (minPeople + 5) && basePrice > 0) {
-      discount = menuPrice * 0.10;
-      menuPrice = menuPrice - discount;
-    }
-
-    // Avertissement si en-dessous du minimum (autorisé côté saisie, mais on prévient)
-    if (people > 0 && people < minPeople) {
-      warnMinEl.classList.remove('d-none');
-    } else {
-      warnMinEl.classList.add('d-none');
-    }
-
-    const city = root.querySelector('[data-city]')?.value || '';
-    const km = Number(kmEl.value || 0);
-    const fee = computeDeliveryFee(city, km);
-
-    feeEl.textContent = fee.toFixed(2);
-    discountEl.textContent = discount.toFixed(2);
-    totalEl.textContent = (menuPrice + fee).toFixed(2);
-  }
-
-  async function fetchMenuDetails(menuId) {
-    const url = withBase('api/menus/' + menuId);
-    const res = await fetch(url, { headers: { 'Accept': 'application/json' } });
-    if (!res.ok) throw new Error('HTTP ' + res.status);
-    return await res.json();
-  }
-
-  async function onMenuChange() {
-    const menuId = menuSelect.value;
-    if (!menuId) return;
-    hiddenMenuId.value = menuId;
-    try {
-      const data = await fetchMenuDetails(menuId);
-      menuData = data;
-      // Remplit les sélecteurs par catégorie
-      const entrees = (data.dishes || []).filter(d => d.category === 'entree');
-      const plats = (data.dishes || []).filter(d => d.category === 'plat');
-      const desserts = (data.dishes || []).filter(d => d.category === 'dessert');
-
-      setSelectOptions(entreeSel, entrees);
-      setSelectOptions(platSel, plats);
-      setSelectOptions(dessertSel, desserts);
-
-      updatePreviews();
-      updatePricing();
-    } catch (e) {
-      console.error(e);
-      alert('Impossible de charger le menu sélectionné.');
-    }
-  }
-
-  // --- Géocodage distance (optionnel) via Nominatim ---
-  const addrInput = root.querySelector('[data-address]');
-  const cityInput = root.querySelector('[data-city]');
-  const geoHint = root.querySelector('[data-geo-hint]');
-  let geoTimeout = null;
-
-  function haversineKm(lat1, lon1, lat2, lon2) {
-    const toRad = (d) => (d * Math.PI) / 180;
-    const R = 6371;
-    const dLat = toRad(lat2 - lat1);
-    const dLon = toRad(lon2 - lon1);
-    const a = Math.sin(dLat/2)**2 + Math.cos(toRad(lat1))*Math.cos(toRad(lat2))*Math.sin(dLon/2)**2;
-    const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1-a));
-    return R * c;
-  }
-
-  async function geocode(query) {
-    const u = 'https://nominatim.openstreetmap.org/search?format=json&limit=1&q=' + encodeURIComponent(query);
-    const r = await fetch(u, { headers: { 'Accept': 'application/json' } });
-    if (!r.ok) throw new Error('Geo HTTP ' + r.status);
-    const j = await r.json();
-    if (!j || !j.length) return null;
-    return { lat: Number(j[0].lat), lon: Number(j[0].lon) };
-  }
-
-  function normalizeCity(str) {
-    return (str || '')
-        .toString()
-        .trim()
-        .toLowerCase()
-        .normalize('NFD')
-        .replace(/[\u0300-\u036f]/g, '')  // retire les accents
-        .replace(/[^a-z\s-]/g, ' ')
-        .replace(/\s+/g, ' ')
-        .trim();
-}
-
-function haversineKm(a, b) {
-    const toRad = (d) => (d * Math.PI) / 180;
-    const R = 6371;
-    const dLat = toRad(b.lat - a.lat);
-    const dLon = toRad(b.lon - a.lon);
-    const lat1 = toRad(a.lat);
-    const lat2 = toRad(b.lat);
-
-    const x = Math.sin(dLat/2) * Math.sin(dLat/2)
-            + Math.cos(lat1) * Math.cos(lat2)
-            * Math.sin(dLon/2) * Math.sin(dLon/2);
-
-    return 2 * R * Math.asin(Math.sqrt(x));
-}
-
-/**
- * Distance simplifiée : on se base sur la VILLE (pas l'adresse).
- * - Bordeaux => 0 km
- * - Sinon : calcul approximatif via coordonnées connues
- * - Si ville inconnue : estimation à 50 km (pour ne pas bloquer le formulaire)
- */
-function computeDistanceMaybe() {
-    const city = normalizeCity(prestationCity.value);
-    if (!city) {
-        distanceKmInput.value = '0';
-        distanceKmDisplay.textContent = '0 km';
-        geoHint.textContent = 'Renseigne la ville pour estimer les frais de déplacement.';
-        updatePriceUI();
-        return;
-    }
-
-    const coords = {
-        bordeaux: {lat: 44.8378, lon: -0.5792},
-        paris: {lat: 48.8566, lon: 2.3522},
-        lyon: {lat: 45.7640, lon: 4.8357},
-        marseille: {lat: 43.2965, lon: 5.3698},
-        toulouse: {lat: 43.6047, lon: 1.4442},
-        nice: {lat: 43.7102, lon: 7.2620},
-        nantes: {lat: 47.2184, lon: -1.5536},
-        lille: {lat: 50.6292, lon: 3.0573},
-        strasbourg: {lat: 48.5734, lon: 7.7521},
-        rennes: {lat: 48.1173, lon: -1.6778},
-        montpellier: {lat: 43.6119, lon: 3.8772},
-        grenoble: {lat: 45.1885, lon: 5.7245},
-        dijon: {lat: 47.3220, lon: 5.0415},
-        tours: {lat: 47.3941, lon: 0.6848},
-        angers: {lat: 47.4784, lon: -0.5632},
-        reims: {lat: 49.2583, lon: 4.0317},
-        le_havre: {lat: 49.4944, lon: 0.1079},
-        rouen: {lat: 49.4432, lon: 1.0993},
-        orleans: {lat: 47.9029, lon: 1.9093},
-        clermont_ferrand: {lat: 45.7772, lon: 3.0870},
-        limoges: {lat: 45.8336, lon: 1.2611},
-        pau: {lat: 43.2951, lon: -0.3708},
-        bayonne: {lat: 43.4929, lon: -1.4748},
-        la_rochelle: {lat: 46.1603, lon: -1.1511},
-        biarritz: {lat: 43.4832, lon: -1.5586}
-    };
-
-    const base = coords.bordeaux;
-    let chosen = coords[city];
-
-    // alias rapides
-    if (!chosen && city === 'le havre') chosen = coords.le_havre;
-    if (!chosen && city === 'clermont ferrand') chosen = coords.clermont_ferrand;
-
-    let km;
-    if (chosen) {
-        km = Math.round(haversineKm(base, chosen));
-        geoHint.textContent = 'Distance estimée à partir de la ville (approx.).';
-    } else {
-        km = 50;
-        geoHint.textContent = 'Ville non reconnue : distance estimée (50 km).';
-    }
-
-    // Bordeaux => 0
-    if (city === 'bordeaux') km = 0;
-
-    distanceKmInput.value = String(km);
-    distanceKmDisplay.textContent = km + ' km';
-
-    updatePriceUI();
-}
-
-    geoHint.textContent = 'Calcul de distance…';
-    try {
-      const target = await geocode(address + ', ' + city);
-      const bdx = await geocode('Bordeaux, France');
-      if (!target || !bdx) {
-        geoHint.textContent = 'Impossible de géocoder. Tu peux saisir la distance manuellement.';
-        return;
-      }
-      const km = haversineKm(target.lat, target.lon, bdx.lat, bdx.lon);
-      kmEl.value = km.toFixed(1);
-      geoHint.textContent = 'Distance estimée automatiquement (≈ ' + km.toFixed(1) + ' km).';
-      updatePricing();
-    } catch (e) {
-      console.warn(e);
-      geoHint.textContent = 'Géocodage indisponible. Tu peux saisir la distance manuellement.';
-    }
-  }
-
-  function debounceDistance() {
-    if (geoTimeout) clearTimeout(geoTimeout);
-    geoTimeout = setTimeout(computeDistanceMaybe, 700);
-  }
-
-  // Init
-  menuSelect.addEventListener('change', onMenuChange);
-  entreeSel.addEventListener('change', () => { updatePreviews(); });
-  platSel.addEventListener('change', () => { updatePreviews(); });
-  dessertSel.addEventListener('change', () => { updatePreviews(); });
-  peopleInput.addEventListener('input', updatePricing);
-  kmEl.addEventListener('input', updatePricing);
-  cityInput.addEventListener('input', () => { updatePricing(); debounceDistance(); });
-  addrInput.addEventListener('input', debounceDistance);
-
-  // Première mise en place
-  onMenuChange();
+  document.addEventListener('DOMContentLoaded', function () {
+    initMenuFilters();
+    initDishPreviewBadges();
+    initOpeningHoursForm();
+    initOrderForm();
+  });
 })();

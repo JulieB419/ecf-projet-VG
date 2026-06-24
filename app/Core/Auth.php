@@ -56,6 +56,14 @@ final class Auth
      */
     private static function redirect(string $to): void
     {
-        Url::redirect(trim($to));
+        $to = trim($to);
+        if ($to === '') {
+            $to = '/';
+        }
+        if (!str_starts_with($to, 'http') && $to[0] !== '/') {
+            $to = '/' . $to;
+        }
+        header('Location: ' . $to);
+        exit;
     }
 }

@@ -76,20 +76,78 @@ body{
   display: block;
 }
 
-
-#reviewsCarousel {
-  padding-left: 3rem;
-  padding-right: 3rem;
+/* Refactorisation : styles extraits des vues PHP */
+.selection-preview {
+  display: inline-block;
+  margin-left: 6px;
 }
 
-#reviewsCarousel .carousel-control-prev,
-#reviewsCarousel .carousel-control-next {
-  width: 3rem;
-}
-
-#reviewsCarousel .carousel-control-prev-icon,
-#reviewsCarousel .carousel-control-next-icon {
-  background-color: rgba(0, 0, 0, 0.65);
+.selection-preview-badge {
+  display: inline-block;
+  padding: 3px 8px;
+  margin: 2px;
+  border: 1px solid #ddd;
   border-radius: 999px;
-  background-size: 55% 55%;
+  font-size: 12px;
 }
+
+.selection-preview-empty {
+  opacity: .7;
+}
+
+.menu-image-choice {
+  width: 140px;
+}
+
+.menu-image-thumb {
+  max-width: 120px;
+  max-height: 90px;
+  object-fit: cover;
+}
+
+.menu-image-label {
+  font-size: .85rem;
+}
+
+.time-cell {
+  min-width: 140px;
+}
+
+.col-id { width: 80px; }
+.col-id-lg { width: 90px; }
+.col-min, .col-stock, .col-active { width: 110px; }
+.col-price { width: 120px; }
+.col-actions-md { width: 240px; }
+.col-actions-lg { width: 260px; }
+
+.admin-page-editor {
+  max-width: 900px;
+}
+
+.admin-save-alert {
+  margin: 12px 0;
+  padding: 10px 12px;
+  border: 1px solid #b7e3c7;
+  background: #eefaf2;
+}
+
+.admin-page-selector {
+  margin: 12px 0 24px;
+}
+
+.admin-form-row {
+  margin-bottom: 12px;
+}
+
+.admin-code-textarea {
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace;
+}
+
+.admin-separator {
+  margin: 26px 0;
+}
+
+.sticky-summary-card {
+  top: 1rem;
+}
+

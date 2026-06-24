@@ -91,17 +91,11 @@ $router->get('/administration/stats', 'AdminController@stats');
 
 // Admin - Plats
 $router->get('/administration/plats', 'AdminController@dishes');
-$router->get('/administration/dishes', 'AdminController@dishes');
 $router->get('/administration/plats/nouveau', 'AdminController@dishCreateForm');
-$router->get('/administration/dishes/nouveau', 'AdminController@dishCreateForm');
 $router->post('/administration/plats/nouveau', 'AdminController@dishCreate');
-$router->post('/administration/dishes/nouveau', 'AdminController@dishCreate');
 $router->get('/administration/plats/{id}/modifier', 'AdminController@dishEditForm');
-$router->get('/administration/dishes/{id}/modifier', 'AdminController@dishEditForm');
 $router->post('/administration/plats/{id}/modifier', 'AdminController@dishUpdate');
-$router->post('/administration/dishes/{id}/modifier', 'AdminController@dishUpdate');
 $router->post('/administration/plats/{id}/supprimer', 'AdminController@dishDelete');
-$router->post('/administration/dishes/{id}/supprimer', 'AdminController@dishDelete');
 
 // Admin - Menus
 $router->get('/administration/menus', 'AdminController@menus');
