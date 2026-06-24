@@ -12,8 +12,8 @@ final class LegalController extends Controller
     {
         $page = SitePage::get('mentions_legales');
         if (!$page) {
-            $default = @file_get_contents(__DIR__ . '/../../views/legal/legal_default.html')
-                ?: @file_get_contents(__DIR__ . '/../../views/legal/legal.php')
+            $default = @file_get_contents(__DIR__ . '/../Views/legal/legal_default.html')
+                ?: @file_get_contents(__DIR__ . '/../Views/legal/legal.php')
                 ?: '';
             SitePage::upsert('mentions_legales', 'Mentions légales', $default);
             $page = SitePage::get('mentions_legales');
@@ -26,8 +26,8 @@ final class LegalController extends Controller
     {
         $page = SitePage::get('cgv');
         if (!$page) {
-            $default = @file_get_contents(__DIR__ . '/../../views/legal/cgv_default.html')
-                ?: @file_get_contents(__DIR__ . '/../../views/legal/cgv.php')
+            $default = @file_get_contents(__DIR__ . '/../Views/legal/cgv_default.html')
+                ?: @file_get_contents(__DIR__ . '/../Views/legal/cgv.php')
                 ?: '';
             SitePage::upsert('cgv', 'Conditions générales de vente', $default);
             $page = SitePage::get('cgv');

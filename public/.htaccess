@@ -1,10 +1,6 @@
 Options -Multiviews
 RewriteEngine On
 
-# ⚠️ Ne pas hardcoder un sous-dossier ici.
-# Sur AlwaysData, si le document root pointe déjà vers /public,
-# un RewriteBase "/vite-gourmand/public/" casse les URLs et peut provoquer des 500.
-RewriteBase /
 
 # Si le fichier ou dossier existe, on le sert directement
 RewriteCond %{REQUEST_FILENAME} -f [OR]
@@ -12,4 +8,4 @@ RewriteCond %{REQUEST_FILENAME} -d
 RewriteRule ^ - [L]
 
 # Sinon, tout passe par l'index (front controller)
-RewriteRule ^ index.php [L]
+RewriteRule . index.php [QSA,L]

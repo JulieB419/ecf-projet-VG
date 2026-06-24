@@ -15,7 +15,7 @@ final class OrderController extends Controller
 {
     public function createForm(string $menuId): void
     {
-        Auth::requireRole(['user','employee','admin'], 'Pour commander, veuillez vous connecter ou vous inscrire.');
+        Auth::requireRole(['user','employee','admin'], 'Afin de commander, merci de créer un compte ou de vous connecter.');
 
         $id = (int)$menuId;
         $menu = Menu::find($id);
@@ -37,7 +37,7 @@ final class OrderController extends Controller
 
     public function create(string $menuId): void
     {
-        Auth::requireRole(['user','employee','admin'], 'Pour commander, veuillez vous connecter ou vous inscrire.');
+        Auth::requireRole(['user','employee','admin'], 'Afin de commander, merci de créer un compte ou de vous connecter.');
 
         if (!Session::checkCsrf($_POST['csrf'] ?? null)) {
             Session::flash('error','Session expirée.');

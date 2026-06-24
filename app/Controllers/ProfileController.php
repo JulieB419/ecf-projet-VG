@@ -8,6 +8,7 @@ use App\Core\Auth;
 use App\Core\Session;
 use App\Models\Order;
 use App\Models\Review;
+use App\Services\StatsStore;
 
 final class ProfileController extends Controller
 {
@@ -38,6 +39,7 @@ final class ProfileController extends Controller
         if (!Order::canUserCancel($order)) { Session::flash('error','Annulation impossible.'); $this->redirect('/profil/commandes/'.(int)$params['id']); }
 
         Order::cancelByUser((int)$params['id'], (int)$u['id']);
+        StatsStore::markCancelled((int)$params['id']);
         Session::flash('success','Commande annulée.');
         $this->redirect('/profil');
     }

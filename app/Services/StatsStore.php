@@ -3,6 +3,7 @@ declare(strict_types=1);
 
 namespace App\Services;
 
+use App\Core\DB;
 use App\Core\Env;
 
 /**
@@ -85,6 +86,68 @@ final class StatsStore
 
         // Fallback JSONL
         self::appendJsonl(['type' => 'cancel', 'payload' => ['order_id' => $orderId, 'status' => 'cancelled', 'date' => date('c')]]);
+    }
+
+
+    /**
+     * Reconstruit entièrement la source de stats à partir des commandes MySQL existantes.
+     * Retourne le nombre de commandes synchronisées et la source utilisée.
+     */
+    public static function rebuildFromMySql(): array
+    {
+        $sql = "SELECT o.id, o.menu_id, o.people_count, o.delivery_fee, o.total_price, o.status, o.created_at, m.title AS menu_title
+                FROM orders o
+                INNER JOIN menus m ON m.id = o.menu_id
+                ORDER BY o.id ASC";
+        $rows = DB::pdo()->query($sql)->fetchAll() ?: [];
+
+        $docs = [];
+        foreach ($rows as $row) {
+            $status = ((string)($row['status'] ?? '') === 'annulee') ? 'cancelled' : 'confirmed';
+            $docs[] = self::normalizeOrderDoc([
+                'order_id' => (int)($row['id'] ?? 0),
+                'menu_id' => (int)($row['menu_id'] ?? 0),
+                'menu_title' => (string)($row['menu_title'] ?? ''),
+                'created_date' => substr((string)($row['created_at'] ?? date('Y-m-d')), 0, 10),
+                'total_price' => (float)($row['total_price'] ?? 0),
+                'delivery_fee' => (float)($row['delivery_fee'] ?? 0),
+                'people_count' => (int)($row['people_count'] ?? 0),
+                'status' => $status,
+            ]);
+        }
+
+        if (extension_loaded('mongodb')) {
+            try {
+                $uri = Env::get('MONGO_URI');
+                $dbName = Env::get('MONGO_DB', self::DEFAULT_DB);
+                $collection = Env::get('MONGO_STATS_COLLECTION', self::DEFAULT_COLLECTION);
+
+                if ($uri) {
+                    $manager = new \MongoDB\Driver\Manager($uri);
+                    $bulk = new \MongoDB\Driver\BulkWrite();
+                    $bulk->delete([]);
+                    foreach ($docs as $doc) {
+                        $bulk->insert($doc);
+                    }
+                    $manager->executeBulkWrite($dbName . '.' . $collection, $bulk);
+                    return ['source' => 'mongo', 'count' => count($docs)];
+                }
+            } catch (\Throwable $e) {
+                // fallback fichier
+            }
+        }
+
+        $dir = dirname(self::FALLBACK_PATH);
+        if (!is_dir($dir)) {
+            @mkdir($dir, 0775, true);
+        }
+        $lines = [];
+        foreach ($docs as $doc) {
+            $lines[] = json_encode(['type' => 'order', 'payload' => $doc], JSON_UNESCAPED_UNICODE);
+        }
+        file_put_contents(self::FALLBACK_PATH, implode("\n", $lines) . (count($lines) ? "\n" : ''));
+
+        return ['source' => 'file', 'count' => count($docs)];
     }
 
     /**

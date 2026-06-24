@@ -35,10 +35,10 @@ final class AdminController extends Controller
         $page = SitePage::get($type);
         if (!$page) {
             if ($type === 'mentions_legales') {
-                $default = @file_get_contents(__DIR__ . '/../../views/legal/legal_default.html') ?: '';
+                $default = @file_get_contents(__DIR__ . '/../Views/legal/legal_default.html') ?: '';
                 SitePage::upsert('mentions_legales', 'Mentions légales', $default);
             } else {
-                $default = @file_get_contents(__DIR__ . '/../../views/legal/cgv_default.html') ?: '';
+                $default = @file_get_contents(__DIR__ . '/../Views/legal/cgv_default.html') ?: '';
                 SitePage::upsert('cgv', 'Conditions générales de vente', $default);
             }
             $page = SitePage::get($type);
@@ -71,8 +71,7 @@ final class AdminController extends Controller
         }
 
         SitePage::upsert($type, $title, $content);
-        header('Location: /administration/pages?type=' . urlencode($type) . '&saved=1');
-        exit;
+        $this->redirect('/administration/pages?type=' . urlencode($type) . '&saved=1');
     }
 
     
@@ -108,8 +107,7 @@ final class AdminController extends Controller
         SiteSetting::set('caterer_phone', $phone);
         SiteSetting::set('caterer_email', $email);
 
-        header('Location: /administration/informations?saved=1');
-        exit;
+        $this->redirect('/administration/informations?saved=1');
     }
 
     // ====== Traiteur: horaires d'ouverture (footer) ======
@@ -152,8 +150,7 @@ final class AdminController extends Controller
         }
 
         OpeningHours::updateMany($rows);
-        header('Location: /administration/informations?saved=1');
-        exit;
+        $this->redirect('/administration/informations?saved=1');
     }
 
 public function employees(): void
@@ -210,7 +207,7 @@ public function employees(): void
         Auth::requireRole(['admin']);
         $menuId = !empty($_GET['menu_id']) ? (int)$_GET['menu_id'] : null;
         $from = !empty($_GET['from']) ? (string)$_GET['from'] : null;
-        $to = !empty($_GET['to']) ? (string)$_GET['to'] : null;
+        $to = !empty($_GET['to']) ? (string)($_GET['to']) : null;
 
         $menus = DB::pdo()->query("SELECT id,title FROM menus ORDER BY title")->fetchAll();
         $includeCancelled = !empty($_GET['include_cancelled']);
@@ -218,6 +215,19 @@ public function employees(): void
         $agg = StatsStore::aggregate($menuId, $from, $to, $includeCancelled);
 
         $this->view('admin/stats', compact('menus','agg','menuId','from','to','includeCancelled'));
+    }
+
+    public function rebuildStats(): void
+    {
+        Auth::requireRole(['admin']);
+        if (!Session::checkCsrf($_POST['csrf'] ?? null)) {
+            Session::flash('error', 'Session expirée.');
+            $this->redirect('/administration/stats');
+        }
+
+        $result = StatsStore::rebuildFromMySql();
+        Session::flash('success', 'Statistiques resynchronisées : ' . (int)($result['count'] ?? 0) . ' commande(s) importée(s) depuis MySQL vers la source ' . (string)($result['source'] ?? 'file') . '.');
+        $this->redirect('/administration/stats');
     }
 
 
