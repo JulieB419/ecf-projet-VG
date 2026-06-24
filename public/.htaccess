@@ -1,0 +1,11 @@
+Options -Multiviews
+RewriteEngine On
+
+
+# Si le fichier ou dossier existe, on le sert directement
+RewriteCond %{REQUEST_FILENAME} -f [OR]
+RewriteCond %{REQUEST_FILENAME} -d
+RewriteRule ^ - [L]
+
+# Sinon, tout passe par l'index (front controller)
+RewriteRule . index.php [QSA,L]
